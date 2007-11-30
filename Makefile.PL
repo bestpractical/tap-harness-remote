@@ -7,5 +7,5 @@ abstract_from('lib/TAP/Harness/Remote.pm');
 license('perl');
 requires('Test::More');
 requires('TAP::Harness' => 3.04);
-
+auto_install();
 &WriteAll;
