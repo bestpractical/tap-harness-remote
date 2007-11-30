@@ -1,0 +1,9 @@
+Build.PL
+Changes
+MANIFEST
+Makefile.PL
+README
+lib/TAP/Harness/Remote.pm
+t/00.load.t
+t/pod-coverage.t
+t/pod.t
