@@ -215,14 +215,20 @@ ssh.
 sub change_switches {
     my ( $self, $args, $test ) = @_;
 
+    my $local = $self->remote_config("local");
+    my $remote = $self->remote_config("root");
+
     $ENV{PERL5LIB} =~ s/^(lib:){1,}/lib:/;
-    my $change = File::Spec->abs2rel(Cwd::cwd, $self->remote_config("local"));
+    my @other = grep {not /^-I/} @{$args->{switches}};
+    my @inc = map {s/^-I$local/-I$remote/; $_} grep {/^-I/} @{$args->{switches}};
+
+    my $change = File::Spec->abs2rel(Cwd::cwd, $local);
     my $host   = $self->remote_config("host")->[$self->{hostno}++ % @{$self->remote_config("host")}];
     my $userhost = $self->userhost($host);
     $args->{switches} = [@{$self->remote_config("ssh_args")}, $userhost,
-                         "cd", $self->remote_config("root").$change, "&&",
-                         "PERL5LIB='$ENV{PERL5LIB}:\$PERL5LIB'",
-                         $self->remote_config("perl"), @{$args->{switches}}];
+                         "cd", $remote.$change, "&&",
+                         "PERL5LIB='$ENV{PERL5LIB}'",
+                         $self->remote_config("perl"), @other, @inc];
 }
 
 =head1 CONFIGURATION AND ENVIRONMENT
