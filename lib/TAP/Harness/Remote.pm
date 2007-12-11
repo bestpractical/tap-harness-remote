@@ -28,6 +28,54 @@ so reproduce entire directory trees on a remote server via C<rsync>,
 and spawn the tests remotely.  It also supports round-robin
 distribution of tests across multiple remote testing machines.
 
+=head1 USAGE
+
+C<TAP::Harness::Remote> synchronizes a local directory to the remote
+testing server.  All tests that you wish to run remotely must be
+somewhere within this "local testing root" directory.  You should
+configure where this directory is by creating or editing your
+F<~/.remote_test> file:
+
+    ---
+    local: /path/to/local/testing/root/
+    host: remote.testing.host.example.com
+    root: /where/to/place/local/root/on/remote/
+    user: username
+    master: 1
+    perl: /usr/bin/perl
+    ssh: /usr/bin/ssh
+    ssh_args:
+      - -x
+      - -S
+      - '~/.ssh/master-%r@%h:%p'
+
+See L</CONFIGURATION AND ENVIRONMENT> for more details on the
+individual configuration options.
+
+Once your F<~/.remote_test> is configured, you can run your tests
+remotely, using:
+
+    prove -l --harness TAP::Harness::Remote t/*.t
+
+Any paths in C<@INC> which point inside your local testing root are
+rewritten to point to the equivilent path on the remote host.  This is
+especially useful if you are testing a number of inter-related
+modules; by placing all of them all under the local testing root, and
+adding all of their C<lib/> paths to your C<PERL5LIB>, you can ensure
+that the remote machine always tests your combination of the modules,
+not whichever versions are installed on the remote host.
+
+Note that for irritating technical reasons (your CWD has already been
+resolved), your local root cannot contain symlinks to directories.
+This means you may need to rearrange your directory structure slightly
+to set up the appropriate local testing root.
+
+If you farm of remote hosts, you may change the C<host> configuration
+variable to be an array reference of hostnames.  Tests will be
+distributed in a round-robin manner across the hosts.  You should
+ensure that you tell L<TAP::Harness> to run at least as many parallel
+tests as you have hosts, using C<-j>.
+
 =head1 METHODS
 
 =head2 new
@@ -287,7 +335,8 @@ Working copies of OpenSSH and rsync.
 
 =head1 BUGS AND LIMITATIONS
 
-No bugs have been reported.
+Aborting tests using C<^C> may leave dangling processes on the remote
+host.
 
 Please report any bugs or feature requests to
 C<bug-tap-harness-remote@rt.cpan.org>, or through the web interface at
