@@ -266,6 +266,8 @@ sub change_switches {
     my $local = $self->remote_config("local");
     my $remote = $self->remote_config("root");
 
+    $ENV{PERL5LIB} ||='';
+
     $ENV{PERL5LIB} =~ s/^(lib:){1,}/lib:/;
     my @other = grep {not /^-I/} @{$args->{switches}};
     my @inc = map {s/^-I$local/-I$remote/; $_} grep {/^-I/} @{$args->{switches}};
