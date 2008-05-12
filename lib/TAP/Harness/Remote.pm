@@ -18,7 +18,7 @@ TAP::Harness::Remote - Run tests on a remote server
 
 =head1 SYNOPSIS
 
-    prove --harness TAP::Harness::Remote t/*.t
+    prove -l --state=save,slow --harness TAP::Harness::Remote t/*.t
 
 =head1 DESCRIPTION
 
@@ -37,13 +37,13 @@ configure where this directory is by creating or editing your
 F<~/.remote_test> file:
 
     ---
+    ssh: /usr/bin/ssh
     local: /path/to/local/testing/root/
+    user: username
     host: remote.testing.host.example.com
     root: /where/to/place/local/root/on/remote/
-    user: username
-    master: 1
     perl: /usr/bin/perl
-    ssh: /usr/bin/ssh
+    master: 1
     ssh_args:
       - -x
       - -S
@@ -75,6 +75,11 @@ variable to be an array reference of hostnames.  Tests will be
 distributed in a round-robin manner across the hosts.  Each host will
 run as many tests in parallel as you specified with C<-j>.
 
+Especially when running tests in parallel, it is highly suggested that
+you use the standard L<TAP::Harness> C<--state=save,slow> option, as
+this ensures that the slowest tests will run first, reducing your
+overall test run time.
+
 =head1 METHODS
 
 =head2 new
@@ -86,20 +91,34 @@ the necessary hooks for when tests are actually run.
 
 sub new {
     my $class = shift;
-    my $self = $class->SUPER::new(@_);
+    my $self  = $class->SUPER::new(@_);
 
     $self->load_remote_config;
-    die "Local testing root (@{[$self->remote_config('local')]}) doesn't exist\n"
-      unless -d $self->remote_config("local");
-    my $change = File::Spec->abs2rel(Cwd::cwd, $self->remote_config("local"));
-    die "Current path isn't inside of local testing root (@{[$self->remote_config('local')]})\n"
-      if $change =~ /^\.\./;
+    die
+        "Local testing root (@{[$self->remote_config('local')]}) doesn't exist\n"
+        unless -d $self->remote_config("local");
+
+    my $change
+        = File::Spec->abs2rel( Cwd::cwd, $self->remote_config("local") );
+    die
+        "Current path isn't inside of local testing root (@{[$self->remote_config('local')]})\n"
+        if $change =~ /^\.\./;
+
+    die "Testing host not defined\n"
+        unless grep { defined and not /\.example\.com$/ }
+        @{ $self->remote_config("host") };
+
+    die
+        "Can't find or execute ssh command: @{[$self->remote_config('ssh')]}\n"
+        unless -e $self->remote_config("ssh")
+        and -x $self->remote_config("ssh");
+
     $ENV{HARNESS_PERL} = $self->remote_config("ssh");
 
-    $self->jobs( $self->jobs * @{$self->remote_config("host")});
+    $self->jobs( $self->jobs * @{ $self->remote_config("host") } );
 
-    $self->callback(before_runtests => sub {$self->rsync(@_)});
-    $self->callback(parser_args => sub {$self->change_switches(@_)});
+    $self->callback( before_runtests => sub { $self->rsync(@_) } );
+    $self->callback( parser_args     => sub { $self->change_switches(@_) } );
     return $self;
 }
 
@@ -117,15 +136,15 @@ L</CONFIGURATION>.
 
 sub default_config {
     return {
-            user => "chimps",
-            host => "smoke-int",
-            root => "/home/chimps/remote-test/$ENV{USER}/",
-            perl => "/home/chimps/bin/perl",
-            local => "/home/$ENV{USER}/remote-test/",
-            ssh  => "/usr/bin/ssh",
-            ssh_args => ["-x", "-S", "~/.ssh/master-%r@%h:%p"],
-            master => 1,
-           };
+        user     => "smoker",
+        host     => "smoke-server.example.com",
+        root     => "/home/smoker/remote-test/$ENV{USER}/",
+        perl     => "/home/smoker/bin/perl",
+        local    => "/home/$ENV{USER}/remote-test/",
+        ssh      => "/usr/bin/ssh",
+        ssh_args => [ "-x", "-S", "~/.ssh/master-%r@%h:%p" ],
+        master   => 1,
+    };
 }
 
 =head2 load_remote_config
@@ -137,22 +156,25 @@ default configuration (L</default_config>) if the file does not exist.
 
 sub load_remote_config {
     my $self = shift;
-    unless (-e $self->config_path and -r $self->config_path) {
-        YAML::DumpFile($self->config_path, $self->default_config);
+    unless ( -e $self->config_path and -r $self->config_path ) {
+        YAML::DumpFile( $self->config_path, $self->default_config );
     }
-    $self->{remote_config} = YAML::LoadFile($self->config_path);
+    $self->{remote_config} = YAML::LoadFile( $self->config_path );
 
     # Make sure paths end with slashes, for rsync
-    $self->{remote_config}{root}  .= "/" unless $self->{remote_config}{root}  =~ m|/$|;
-    $self->{remote_config}{local} .= "/" unless $self->{remote_config}{local} =~ m|/$|;
+    $self->{remote_config}{root} .= "/"
+        unless $self->{remote_config}{root} =~ m|/$|;
+    $self->{remote_config}{local} .= "/"
+        unless $self->{remote_config}{local} =~ m|/$|;
 
     # Host should be an arrayref
-    $self->{remote_config}{host} = [$self->{remote_config}{host}]
-      unless ref $self->{remote_config}{host};
+    $self->{remote_config}{host} = [ $self->{remote_config}{host} ]
+        unless ref $self->{remote_config}{host};
 
     # Ditto ssh_args
-    $self->{remote_config}{ssh_args} = [split ' ', $self->{remote_config}{ssh_args}]
-      unless ref $self->{remote_config}{ssh_args};
+    $self->{remote_config}{ssh_args}
+        = [ split ' ', $self->{remote_config}{ssh_args} ]
+        unless ref $self->{remote_config}{ssh_args};
 }
 
 =head2 remote_config KEY
@@ -164,7 +186,7 @@ Returns the configuration value set fo the given C<KEY>.
 sub remote_config {
     my $self = shift;
     $self->load_remote_config unless $self->{remote_config};
-    return $self->{remote_config}->{shift @_};
+    return $self->{remote_config}->{ shift @_ };
 }
 
 =head2 userhost [HOST]
@@ -178,7 +200,7 @@ sub userhost {
     my $self = shift;
     my $userhost = @_ ? shift : $self->remote_config("host")->[0];
     $userhost = $self->remote_config("user") . "\@" . $userhost
-      if $self->remote_config("user");
+        if $self->remote_config("user");
     return $userhost;
 }
 
@@ -194,13 +216,13 @@ sub start_masters {
     my $self = shift;
     return unless $self->remote_config("master");
 
-    for my $host (@{$self->remote_config("host")}) {
+    for my $host ( @{ $self->remote_config("host") } ) {
         my $userhost = $self->userhost($host);
-        my $pid = fork;
+        my $pid      = fork;
         die "Fork failed: $!" unless $pid >= 0;
-        if (not $pid) {
-            exec $self->remote_config("ssh"), @{$self->remote_config("ssh_args")},
-              "-M", "-N", $userhost;
+        if ( not $pid ) {
+            exec $self->remote_config("ssh"),
+                @{ $self->remote_config("ssh_args") }, "-M", "-N", $userhost;
             die "Starting of master SSH connection failed";
         }
         $self->{ssh_master}{$userhost} = $pid;
@@ -222,20 +244,24 @@ sub rsync {
     my $self = shift;
     $self->start_masters;
 
-    for my $host (@{$self->remote_config("host")}) {
+    for my $host ( @{ $self->remote_config("host") } ) {
         my $userhost = $self->userhost($host);
-        my $return = system(qw!rsync -avz --delete!,
-                            qq!--rsh!, $self->remote_config("ssh") . " @{$self->remote_config('ssh_args')}",
-                            $self->remote_config("local"),
-                            "$userhost:" . $self->remote_config("root"));
+        my $return   = system(
+            qw!rsync -avz --delete!,
+            qq!--rsh!,
+            $self->remote_config("ssh")
+                . " @{$self->remote_config('ssh_args')}",
+            $self->remote_config("local"),
+            "$userhost:" . $self->remote_config("root")
+        );
         die "rsync to $userhost failed" if $return;
     }
 
-    if (my $lib = $ENV{PERL5LIB}) {
-        my @lib = split(/:/, $lib);
-        my $local = $self->remote_config("local");
+    if ( my $lib = $ENV{PERL5LIB} ) {
+        my @lib    = split( /:/, $lib );
+        my $local  = $self->remote_config("local");
         my $remote = $self->remote_config("root");
-        $ENV{PERL5LIB} = join(":", map {s/^$local/$remote/; $_} @lib );
+        $ENV{PERL5LIB} = join( ":", map { s/^$local/$remote/; $_ } @lib );
     }
 }
 
@@ -248,9 +274,10 @@ Tears down the ssh master connections, if they were started.
 sub DESTROY {
     my $self = shift;
     return unless $self->remote_config("master");
-    for my $userhost (keys %{$self->{ssh_master} || {}}) {
+    for my $userhost ( keys %{ $self->{ssh_master} || {} } ) {
         next unless kill 0, $self->{ssh_master}{$userhost};
-        system "/usr/bin/ssh", @{$self->remote_config("ssh_args")}, "-O", "exit", $userhost;
+        system "/usr/bin/ssh", @{ $self->remote_config("ssh_args") }, "-O",
+            "exit", $userhost;
     }
 }
 
@@ -264,22 +291,27 @@ ssh.
 sub change_switches {
     my ( $self, $args, $test ) = @_;
 
-    my $local = $self->remote_config("local");
+    my $local  = $self->remote_config("local");
     my $remote = $self->remote_config("root");
 
-    $ENV{PERL5LIB} ||='';
+    $ENV{PERL5LIB} ||= '';
 
     $ENV{PERL5LIB} =~ s/^(lib:){1,}/lib:/;
-    my @other = grep {not /^-I/} @{$args->{switches}};
-    my @inc = map {s/^-I$local/-I$remote/; $_} grep {/^-I/} @{$args->{switches}};
+    my @other = grep { not /^-I/ } @{ $args->{switches} };
+    my @inc = map { s/^-I$local/-I$remote/; $_ }
+        grep {/^-I/} @{ $args->{switches} };
 
-    my $change = File::Spec->abs2rel(Cwd::cwd, $local);
-    my $host   = $self->remote_config("host")->[$self->{hostno}++ % @{$self->remote_config("host")}];
+    my $change = File::Spec->abs2rel( Cwd::cwd, $local );
+    my $host = $self->remote_config("host")
+        ->[ $self->{hostno}++ % @{ $self->remote_config("host") } ];
     my $userhost = $self->userhost($host);
-    $args->{switches} = [@{$self->remote_config("ssh_args")}, $userhost,
-                         "cd", $remote.$change, "&&",
-                         "PERL5LIB='$ENV{PERL5LIB}'",
-                         $self->remote_config("perl"), @other, @inc];
+    $args->{switches} = [
+        @{ $self->remote_config("ssh_args") }, $userhost,
+        "cd",                                  $remote . $change,
+        "&&",                                  "PERL5LIB='$ENV{PERL5LIB}'",
+        $self->remote_config("perl"),          @other,
+        @inc
+    ];
 }
 
 =head1 CONFIGURATION AND ENVIRONMENT
@@ -312,7 +344,7 @@ root.
 
 =item perl
 
-The C<perl> binary to run on the remote host
+The path to the C<perl> binary on the remote host.
 
 =item ssh
 
@@ -351,7 +383,8 @@ Alex Vandiver  C<< <alexmv@bestpractical.com> >>
 
 =head1 LICENCE AND COPYRIGHT
 
-Copyright (c) 2007, Best Practical Solutions, LLC.  All rights reserved.
+Copyright (c) 2007-2008, Best Practical Solutions, LLC.  All rights
+reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.
