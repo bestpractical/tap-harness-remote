@@ -72,9 +72,8 @@ to set up the appropriate local testing root.
 
 If you farm of remote hosts, you may change the C<host> configuration
 variable to be an array reference of hostnames.  Tests will be
-distributed in a round-robin manner across the hosts.  You should
-ensure that you tell L<TAP::Harness> to run at least as many parallel
-tests as you have hosts, using C<-j>.
+distributed in a round-robin manner across the hosts.  Each host will
+run as many tests in parallel as you specified with C<-j>.
 
 =head1 METHODS
 
@@ -96,6 +95,8 @@ sub new {
     die "Current path isn't inside of local testing root (@{[$self->remote_config('local')]})\n"
       if $change =~ /^\.\./;
     $ENV{HARNESS_PERL} = $self->remote_config("ssh");
+
+    $self->jobs( $self->jobs * @{$self->remote_config("host")});
 
     $self->callback(before_runtests => sub {$self->rsync(@_)});
     $self->callback(parser_args => sub {$self->change_switches(@_)});
