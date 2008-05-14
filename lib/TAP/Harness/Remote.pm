@@ -276,7 +276,7 @@ sub DESTROY {
     return unless $self->remote_config("master");
     for my $userhost ( keys %{ $self->{ssh_master} || {} } ) {
         next unless kill 0, $self->{ssh_master}{$userhost};
-        system "/usr/bin/ssh", @{ $self->remote_config("ssh_args") }, "-O",
+        system $self->remote_config("ssh"), @{ $self->remote_config("ssh_args") }, "-O",
             "exit", $userhost;
     }
 }
