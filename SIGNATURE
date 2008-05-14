@@ -1,0 +1,45 @@
+This file contains message digests of all files listed in MANIFEST,
+signed via the Module::Signature module, version 0.55.
+
+To verify the content in this distribution, first make sure you have
+Module::Signature installed, then type:
+
+    % cpansign -v
+
+It will check each file's integrity, as well as the signature's
+validity.  If "==> Signature verified OK! <==" is not displayed,
+the distribution may already have been compromised, and you should
+not run its Makefile.PL or Build.PL.
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+SHA1 e0abd9f17cfb550965d2037329677af7ae917f9d Build.PL
+SHA1 1c863213195db703e5c2a7466313a2a2af9f9bed Changes
+SHA1 64e07aa5f869ceda555fb0ea6a21b9f68e19c684 MANIFEST
+SHA1 27a000607de296c6453d89b49ef334f1f48a2458 META.yml
+SHA1 07806db3e88e7d40009b341e00a1ad119f5c90ac Makefile.PL
+SHA1 abdf6e55e51e459ef6bce24e5f088b0d0bc286b5 README
+SHA1 603bb9de29fb8cba7f13409c546750972eff645d inc/Module/AutoInstall.pm
+SHA1 7e2cfa1b9efe0d502ee57717649c90ba4bd28ba9 inc/Module/Install.pm
+SHA1 182a0df45b65151afdc2be0b7246a2d02d0f0567 inc/Module/Install/AutoInstall.pm
+SHA1 6e1392d80a0f239eecd5664f7f21f922cedb9329 inc/Module/Install/Base.pm
+SHA1 c9121d9bff4f4ab617c78ada27f458355cad0f19 inc/Module/Install/Build.pm
+SHA1 f69417fe831d9cc22a78f00a617afadceade4d81 inc/Module/Install/Can.pm
+SHA1 c61d02895330310048bf388881b5e2e064031561 inc/Module/Install/Fetch.pm
+SHA1 4933b00c3a646da8d223c6957f94552bbd62f8c6 inc/Module/Install/Include.pm
+SHA1 54fcbed19232ec959bb17cfb4410599afc7f0779 inc/Module/Install/Makefile.pm
+SHA1 7d3be9b158e37b2b2c22084740099955623b1d56 inc/Module/Install/Metadata.pm
+SHA1 0a8b66180229ba2f9deaea1fedd0aacf7a7ace6b inc/Module/Install/Win32.pm
+SHA1 d3352eb33fe43a5f3ead513f645224fe34d73bc9 inc/Module/Install/WriteAll.pm
+SHA1 5b7f57b9ad1bf4a88d87527d50608eda55893280 lib/TAP/Harness/Remote.pm
+SHA1 6923a0217373d46598e300ce88a6d8b92d7e53a2 t/00.load.t
+SHA1 6da39b48ce64b584e4c3274bff96fc76ff484820 t/pod-coverage.t
+SHA1 0190346d7072d458c8a10a45c19f86db641dcc48 t/pod.t
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v2.0.9 (GNU/Linux)
+
+iEYEARECAAYFAkgrPRAACgkQMflWJZZAbqDrbQCgrhbWChsPKehZ2tn7H0U4hZgF
+H2UAni9OTSS1qJ4xFxVN352nhoh2sQ4O
+=dI+e
+-----END PGP SIGNATURE-----
