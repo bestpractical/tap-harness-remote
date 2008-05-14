@@ -1,4 +1,4 @@
-TAP-Harness-Remote version 0.0.1
+TAP-Harness-Remote version 0.01
 
 Sometimes you want to run tests on a remote testing machine, rather
 than your local development box.  C<TAP::Harness::Remote> allows you
@@ -26,13 +26,14 @@ Alternatively, to install with Module::Build, you can use the following commands
 
 DEPENDENCIES
 
-TAP::Harness 3.04 or higher; working copies of OpenSSH and rsync.
+A recent enough TAP::Harness build; 3.03 or later should suffice.
+Working copies of OpenSSH and rsync.
 
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2007, Best Practical Solutions LLC.
+Copyright (c) 2007-2008, Best Practical Solutions, LLC.  All rights
+reserved.
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
-
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself. See L<perlartistic>.
