@@ -10,6 +10,7 @@ my $builder = Module::Build->new(
     requires => {
         'Test::More' => 0,
         'version'    => 0,
+        'YAML'       => 0,
         'TAP::Harness' => 3.04,
     },
     add_to_cleanup      => [ 'TAP-Harness-Remote-*' ],

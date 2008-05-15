@@ -1,5 +1,8 @@
 Revision history for TAP-Harness-Remote
 
+0.02  Thu May 15 12:58:08 2008
+       Include missing YAML dep
+
 0.01  Fri Nov 30 14:11:58 2007
        Initial release.
 

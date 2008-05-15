@@ -16,4 +16,5 @@ no_index:
 requires: 
   TAP::Harness: 3.04
   Test::More: 0
-version: 0.01
+  YAML: 0
+version: 0.02
