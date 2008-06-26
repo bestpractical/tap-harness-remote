@@ -1,5 +1,5 @@
 --- 
-abstract: Run tests on a remote server
+abstract: Run tests on a remote server farm
 author: 
   - Alex Vandiver <alexmv@bestpractical.com>
 distribution_type: module
@@ -17,4 +17,4 @@ requires:
   TAP::Harness: 3.04
   Test::More: 0
   YAML: 0
-version: 0.02
+version: 0.03

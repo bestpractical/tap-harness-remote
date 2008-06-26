@@ -1,6 +1,6 @@
 package TAP::Harness::Remote;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use warnings;
 use strict;
@@ -8,13 +8,13 @@ use Carp;
 
 use base 'TAP::Harness';
 use constant config_path => "$ENV{HOME}/.remote_test";
-use File::Path;
+use File::Spec;
 use Cwd;
 use YAML;
 
 =head1 NAME
 
-TAP::Harness::Remote - Run tests on a remote server
+TAP::Harness::Remote - Run tests on a remote server farm
 
 =head1 SYNOPSIS
 
@@ -30,15 +30,16 @@ distribution of tests across multiple remote testing machines.
 
 =head1 USAGE
 
-C<TAP::Harness::Remote> synchronizes a local directory to the remote
+C<TAP::Harness::Remote> synchronizes local directories to the remote
 testing server.  All tests that you wish to run remotely must be
-somewhere within this "local testing root" directory.  You should
-configure where this directory is by creating or editing your
-F<~/.remote_test> file:
+somewhere within these "local testing directories."  You should
+configure this set by creating or editing your F<~/.remote_test> file:
 
     ---
     ssh: /usr/bin/ssh
-    local: /path/to/local/testing/root/
+    local:
+      - /path/to/local/testing/root/
+      - /path/to/another/testing/root/
     user: username
     host: remote.testing.host.example.com
     root: /where/to/place/local/root/on/remote/
@@ -57,23 +58,18 @@ remotely, using:
 
     prove -l --harness TAP::Harness::Remote t/*.t
 
-Any paths in C<@INC> which point inside your local testing root are
+Any paths in C<@INC> which point inside your local testing roots are
 rewritten to point to the equivilent path on the remote host.  This is
 especially useful if you are testing a number of inter-related
-modules; by placing all of them all under the local testing root, and
-adding all of their C<lib/> paths to your C<PERL5LIB>, you can ensure
-that the remote machine always tests your combination of the modules,
-not whichever versions are installed on the remote host.
+modules; by placing all of them all as local testing roots, and adding
+all of their C<lib/> paths to your C<PERL5LIB>, you can ensure that
+the remote machine always tests your combination of the modules, not
+whichever versions are installed on the remote host.
 
-Note that for irritating technical reasons (your CWD has already been
-resolved), your local root cannot contain symlinks to directories.
-This means you may need to rearrange your directory structure slightly
-to set up the appropriate local testing root.
-
-If you farm of remote hosts, you may change the C<host> configuration
-variable to be an array reference of hostnames.  Tests will be
-distributed in a round-robin manner across the hosts.  Each host will
-run as many tests in parallel as you specified with C<-j>.
+If you have a farm of remote hosts, you may change the C<host>
+configuration variable to be an array reference of hostnames.  Tests
+will be distributed in a round-robin manner across the hosts.  Each
+host will run as many tests in parallel as you specified with C<-j>.
 
 Especially when running tests in parallel, it is highly suggested that
 you use the standard L<TAP::Harness> C<--state=save,slow> option, as
@@ -94,15 +90,17 @@ sub new {
     my $self  = $class->SUPER::new(@_);
 
     $self->load_remote_config;
-    die
-        "Local testing root (@{[$self->remote_config('local')]}) doesn't exist\n"
-        unless -d $self->remote_config("local");
+    for ( @{$self->remote_config("local")} ) {
+        die
+            "Local testing root ($_) doesn't exist\n"
+            unless -d $_;
+    }
 
-    my $change
-        = File::Spec->abs2rel( Cwd::cwd, $self->remote_config("local") );
+    # Find which testing root we're under
+
     die
-        "Current path isn't inside of local testing root (@{[$self->remote_config('local')]})\n"
-        if $change =~ /^\.\./;
+        "Current path isn't inside of local testing roots (@{$self->remote_config('local')})\n"
+        unless defined $self->rewrite_path( Cwd::cwd );
 
     die "Testing host not defined\n"
         unless grep { defined and not /\.example\.com$/ }
@@ -140,7 +138,7 @@ sub default_config {
         host     => "smoke-server.example.com",
         root     => "/home/smoker/remote-test/$ENV{USER}/",
         perl     => "/home/smoker/bin/perl",
-        local    => "/home/$ENV{USER}/remote-test/",
+        local    => [ "/home/$ENV{USER}/remote-test/" ],
         ssh      => "/usr/bin/ssh",
         ssh_args => [ "-x", "-S", "~/.ssh/master-%r@%h:%p" ],
         master   => 1,
@@ -161,11 +159,12 @@ sub load_remote_config {
     }
     $self->{remote_config} = YAML::LoadFile( $self->config_path );
 
-    # Make sure paths end with slashes, for rsync
-    $self->{remote_config}{root} .= "/"
-        unless $self->{remote_config}{root} =~ m|/$|;
-    $self->{remote_config}{local} .= "/"
-        unless $self->{remote_config}{local} =~ m|/$|;
+    # Make local path into an arrayref
+    $self->{remote_config}{local} = [ $self->{remote_config}{local} ]
+      unless ref $self->{remote_config}{local};
+
+    # Strip trailing slashes in local dirs, for rsync
+    $self->{remote_config}{local} = [map {s|/$||; $_} @{$self->{remote_config}{local}}];
 
     # Host should be an arrayref
     $self->{remote_config}{host} = [ $self->{remote_config}{host} ]
@@ -216,24 +215,41 @@ sub start_masters {
     my $self = shift;
     return unless $self->remote_config("master");
 
+    local $SIG{USR1} = sub {
+        die "Failed to set up SSH master connections\n";
+    };
+
+    my $parent = $$;
     for my $host ( @{ $self->remote_config("host") } ) {
         my $userhost = $self->userhost($host);
         my $pid      = fork;
         die "Fork failed: $!" unless $pid >= 0;
         if ( not $pid ) {
-            exec $self->remote_config("ssh"),
-                @{ $self->remote_config("ssh_args") }, "-M", "-N", $userhost;
-            die "Starting of master SSH connection failed";
+            # Make sure we clean out this list, so we don't run
+            # anything on _our_ DESTROY
+            $self->{ssh_master} = {};
+
+            # Start the master
+            system($self->remote_config("ssh"),
+                @{ $self->remote_config("ssh_args") }, "-M", "-N", $userhost);
+
+            # Signal the parent when we're done; we're still within 2
+            # seconds of starting, we'll catch this and abort.
+            kill 'USR1', $parent;
+            exit;
         }
         $self->{ssh_master}{$userhost} = $pid;
     }
-    sleep 2;
+
+    # During this sleep, we're waiting for our kids to tell us that
+    # they died.
+    sleep 5;
 }
 
 =head2 rsync
 
 Starts the openssh master connections if need be (see
-L</start_masters>), then C<rsync>'s over the entire local root.
+L</start_masters>), then C<rsync>'s over the local roots.
 Additionally, rewrites the local PERL5LIB path such that any
 directories which point into the local root are included in the remote
 PERL5LIB as well.
@@ -242,6 +258,7 @@ PERL5LIB as well.
 
 sub rsync {
     my $self = shift;
+    $SIG{USR1} = sub {};
     $self->start_masters;
 
     for my $host ( @{ $self->remote_config("host") } ) {
@@ -251,18 +268,34 @@ sub rsync {
             qq!--rsh!,
             $self->remote_config("ssh")
                 . " @{$self->remote_config('ssh_args')}",
-            $self->remote_config("local"),
+            @{$self->remote_config("local")},
             "$userhost:" . $self->remote_config("root")
         );
         die "rsync to $userhost failed" if $return;
     }
 
-    if ( my $lib = $ENV{PERL5LIB} ) {
-        my @lib    = split( /:/, $lib );
-        my $local  = $self->remote_config("local");
-        my $remote = $self->remote_config("root");
-        $ENV{PERL5LIB} = join( ":", map { s/^$local/$remote/; $_ } @lib );
+    $ENV{PERL5LIB} = join( ":", grep {defined} map {$self->rewrite_path($_)} split( /:/, $ENV{PERL5LIB} || "" ) );
+}
+
+=head2 rewrite_path PATH
+
+Rewrites the given local C<PATH> into the remote path on the testing
+server.  Returns undef if the C<PATH> isn't inside any of the
+configured local paths.
+
+=cut
+
+sub rewrite_path {
+    my $self = shift;
+    my $path = shift;
+    my $remote = $self->remote_config("root");
+    for my $local ( @{$self->remote_config("local")} ) {
+        if ($path =~ /^$local/) {
+            $path =~ s{^$local}{$remote . "/" . (File::Spec->splitpath($local))[-1]}e;
+            return $path;
+        }
     }
+    return undef;
 }
 
 =head2 DESTROY
@@ -291,23 +324,22 @@ ssh.
 sub change_switches {
     my ( $self, $args, $test ) = @_;
 
-    my $local  = $self->remote_config("local");
     my $remote = $self->remote_config("root");
 
     $ENV{PERL5LIB} ||= '';
 
     $ENV{PERL5LIB} =~ s/^(lib:){1,}/lib:/;
     my @other = grep { not /^-I/ } @{ $args->{switches} };
-    my @inc = map { s/^-I$local/-I$remote/; $_ }
+    my @inc = map {"-I$_"} grep {defined $_} map { s/^-I//; $self->rewrite_path($_) }
         grep {/^-I/} @{ $args->{switches} };
 
-    my $change = File::Spec->abs2rel( Cwd::cwd, $local );
+    ;
     my $host = $self->remote_config("host")
         ->[ $self->{hostno}++ % @{ $self->remote_config("host") } ];
     my $userhost = $self->userhost($host);
     $args->{switches} = [
         @{ $self->remote_config("ssh_args") }, $userhost,
-        "cd",                                  $remote . $change,
+        "cd",                                  $self->rewrite_path( Cwd::cwd ),
         "&&",                                  "PERL5LIB='$ENV{PERL5LIB}'",
         $self->remote_config("perl"),          @other,
         @inc
@@ -333,14 +365,15 @@ also incur the overhead of rsync'ing to each host.
 
 =item root
 
-The remote testing root.  This is the place where the local root will
+The remote testing root.  This is the place where the local roots will
 be C<rsync>'d to.
 
 =item local
 
-The local testing root.  All files under this will be C<rsync>'d to
-the remote server.  All tests to be run remotely must be within this
-root.
+The local testing roots.  This can be either an array reference of
+multiple roots, or a single string.  Files under each of these
+directories will be C<rsync>'d to the remote server.  All tests to be
+run remotely must be within these roots.
 
 =item perl
 
