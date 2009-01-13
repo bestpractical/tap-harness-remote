@@ -265,6 +265,7 @@ sub rsync {
         my $userhost = $self->userhost($host);
         my $return   = system(
             qw!rsync -avz --delete!,
+            @{$self->remote_config('rsync_args')},
             qq!--rsh!,
             $self->remote_config("ssh")
                 . " @{$self->remote_config('ssh_args')}",
@@ -382,6 +383,11 @@ The path to the C<perl> binary on the remote host.
 =item ssh
 
 The path to the local C<ssh> binary.
+
+=item rsync_args
+
+Either a string or an array reference of arguments to pass to ssh.
+You can use this, for say C<--exclude .git>
 
 =item ssh_args
 
