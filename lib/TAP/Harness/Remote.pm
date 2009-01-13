@@ -1,6 +1,6 @@
 package TAP::Harness::Remote;
 
-our $VERSION = '1.00';
+our $VERSION = '1.05';
 
 use warnings;
 use strict;
