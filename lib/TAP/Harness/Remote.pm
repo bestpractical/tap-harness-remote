@@ -53,6 +53,8 @@ configure this set by creating or editing your F<~/.remote_test> file:
       - -C
       - --exclude
       - blib
+    env:
+      FOO: bar
 
 See L</CONFIGURATION AND ENVIRONMENT> for more details on the
 individual configuration options.
@@ -119,7 +121,7 @@ sub new {
 
     $self->jobs( $self->jobs * @{ $self->remote_config("host") } );
 
-    $self->callback( before_runtests => sub { $self->rsync(@_) } );
+    $self->callback( before_runtests => sub { $self->setup(@_) } );
     $self->callback( parser_args     => sub { $self->change_switches(@_) } );
     return $self;
 }
@@ -142,11 +144,12 @@ sub default_config {
         host       => "smoke-server.example.com",
         root       => "/home/smoker/remote-test/$ENV{USER}/",
         perl       => "/home/smoker/bin/perl",
-        local      => [ "/home/$ENV{USER}/remote-test/" ],
+        local      => [ "$ENV{HOME}/remote-test/" ],
         ssh        => "/usr/bin/ssh",
         ssh_args   => [ "-x", "-S", "~/.ssh/master-%r@%h:%p" ],
         rsync_args => [ "-C" ],
         master     => 1,
+        env        => {},
     };
 }
 
@@ -184,6 +187,9 @@ sub load_remote_config {
     $self->{remote_config}{rsync_args}
         = [ split ' ', ($self->{remote_config}{rsync_args} || "") ]
         unless ref $self->{remote_config}{rsync_args};
+
+    # Defaults for env
+    $self->{env} ||= {};
 }
 
 =head2 remote_config KEY
@@ -256,20 +262,43 @@ sub start_masters {
     sleep 5;
 }
 
-=head2 rsync
+=head2 setup
 
 Starts the openssh master connections if need be (see
-L</start_masters>), then C<rsync>'s over the local roots.
-Additionally, rewrites the local PERL5LIB path such that any
+L</start_masters>), then L</rsync>'s over the local roots.
+Additionally, stores a rewritten PERL5LIB path such that any
 directories which point into the local root are included in the remote
 PERL5LIB as well.
 
 =cut
 
-sub rsync {
+sub setup {
     my $self = shift;
     $SIG{USR1} = sub {};
     $self->start_masters;
+    $self->rsync;
+
+    # Set up our perl5lib
+    $self->{perl5lib} = join( ":", grep {defined} map {$self->rewrite_path($_)} split( /:/, $ENV{PERL5LIB} || "" ) );
+    $self->{perl5lib} =~ s/^(lib:){1,}/lib:/;
+
+    # Also, any other env vars
+    $self->{env} = [];
+    for my $k (keys %{$self->remote_config("env")}) {
+        my $val = $self->remote_config("env")->{$k};
+        $val =~ s/'/'"'"'/g;
+        push @{$self->{env}}, "$k='$val'";
+    }
+}
+
+=head2 rsync
+
+Sends all local roots to the remote hosts, one at a time, using C<rsync>.
+
+=cut
+
+sub rsync {
+    my $self = shift;
 
     for my $host ( @{ $self->remote_config("host") } ) {
         my $userhost = $self->userhost($host);
@@ -284,8 +313,6 @@ sub rsync {
         );
         die "rsync to $userhost failed" if $return;
     }
-
-    $ENV{PERL5LIB} = join( ":", grep {defined} map {$self->rewrite_path($_)} split( /:/, $ENV{PERL5LIB} || "" ) );
 }
 
 =head2 rewrite_path PATH
@@ -328,7 +355,7 @@ sub DESTROY {
 =head2 change_switches
 
 Changes the switches around, such that the remote perl is called, via
-ssh.
+ssh.  This code is called once per test file.
 
 =cut
 
@@ -337,21 +364,18 @@ sub change_switches {
 
     my $remote = $self->remote_config("root");
 
-    $ENV{PERL5LIB} ||= '';
-
-    $ENV{PERL5LIB} =~ s/^(lib:){1,}/lib:/;
     my @other = grep { not /^-I/ } @{ $args->{switches} };
     my @inc = map {"-I$_"} grep {defined $_} map { s/^-I//; $self->rewrite_path($_) }
         grep {/^-I/} @{ $args->{switches} };
 
-    ;
     my $host = $self->remote_config("host")
         ->[ $self->{hostno}++ % @{ $self->remote_config("host") } ];
     my $userhost = $self->userhost($host);
     $args->{switches} = [
         @{ $self->remote_config("ssh_args") }, $userhost,
         "cd",                                  $self->rewrite_path( Cwd::cwd ),
-        "&&",                                  "PERL5LIB='$ENV{PERL5LIB}'",
+        "&&",                                  "PERL5LIB='@{[$self->{perl5lib}]}'",
+        @{$self->{env}},
         $self->remote_config("perl"),          @other,
         @inc
     ];
@@ -412,6 +436,11 @@ You can use this, for say C<--exclude blib>.  The arguments C<-avz
 --delete> are fixed, and then any C<rsync_args> are appended.  C<-C>
 is generally a useful and correct option, and is the default when
 creating new F<.remote_test> files.  See L<rsync(1)> for more details.
+
+=item env
+
+A hash reference of environment variable names and values, to be
+used on the remote host.
 
 =back
 
