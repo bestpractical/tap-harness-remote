@@ -17,4 +17,4 @@ requires:
   TAP::Harness: 3.04
   Test::More: 0
   YAML: 0
-version: 1.05
+version: 1.10
