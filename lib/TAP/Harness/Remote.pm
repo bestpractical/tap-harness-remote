@@ -284,7 +284,7 @@ sub setup {
 
     # Also, any other env vars
     $self->{env} = [];
-    for my $k (keys %{$self->remote_config("env")}) {
+    for my $k (keys %{$self->remote_config("env") || {}}) {
         my $val = $self->remote_config("env")->{$k};
         $val =~ s/'/'"'"'/g;
         push @{$self->{env}}, "$k='$val'";
