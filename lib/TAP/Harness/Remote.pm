@@ -189,7 +189,7 @@ sub load_remote_config {
         unless ref $self->{remote_config}{rsync_args};
 
     # Defaults for env
-    $self->{env} ||= {};
+    $self->{remote_config}{env} ||= {};
 }
 
 =head2 remote_config KEY
