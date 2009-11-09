@@ -104,9 +104,10 @@ sub new {
 
     # Find which testing root we're under
 
+    my $cwd = Cwd::cwd;
     die
-        "Current path isn't inside of local testing roots (@{$self->remote_config('local')})\n"
-        unless defined $self->rewrite_path( Cwd::cwd );
+        "Current path ($cwd) isn't inside of local testing roots (@{$self->remote_config('local')})\n"
+        unless defined $self->rewrite_path($cwd);
 
     die "Testing host not defined\n"
         unless grep { defined and not /\.example\.com$/ }
