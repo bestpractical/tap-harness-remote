@@ -314,6 +314,13 @@ sub setup {
         $val =~ s/'/'"'"'/g;
         push @{$self->{env}}, "$k='$val'";
     }
+    # env_forward to pass through from %ENV
+    for my $regex (@{$self->remote_config("env_forward")}) {
+        for (keys %ENV) {
+            push @{$self->{env}}, "$_='$ENV{$_}'"
+                if m/$regex/;
+        }
+    }
 }
 
 =head2 rsync
@@ -438,6 +445,11 @@ creating new F<.remote_test> files.  See L<rsync(1)> for more details.
 
 A hash reference of environment variable names and values, to be
 used on the remote host.
+
+=item env_forward
+
+An array reference of regex, local envionrment variables matching them
+will be used on the remote host.
 
 =back
 
