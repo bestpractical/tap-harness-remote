@@ -118,13 +118,26 @@ sub new {
         unless -e $self->remote_config("ssh")
         and -x $self->remote_config("ssh");
 
-    $ENV{HARNESS_PERL} = $self->remote_config("ssh");
+    $self->exec( \&_get_cmd );
 
     $self->jobs( $self->jobs * @{ $self->remote_config("host") } );
 
     $self->callback( before_runtests => sub { $self->setup(@_) } );
-    $self->callback( parser_args     => sub { $self->change_switches(@_) } );
+
     return $self;
+}
+
+sub _get_cmd {
+    my $self = shift;
+    my @switches;
+    @switches = $self->lib if $self->lib;
+    push @switches => $self->switches if $self->switches;
+    my %args;
+    $args{switches}    = \@switches;
+    $self->change_switches(\%args);
+
+    return [ $self->remote_config("ssh"), @{ $args{switches} }, @_ ];
+
 }
 
 =head2 config_path
