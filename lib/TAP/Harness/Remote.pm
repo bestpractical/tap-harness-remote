@@ -315,7 +315,7 @@ sub setup {
         push @{$self->{env}}, "$k='$val'";
     }
     # env_forward to pass through from %ENV
-    for my $regex (@{$self->remote_config("env_forward")}) {
+    for my $regex (@{$self->remote_config("env_forward") || []}) {
         for (keys %ENV) {
             push @{$self->{env}}, "$_='$ENV{$_}'"
                 if m/$regex/;
