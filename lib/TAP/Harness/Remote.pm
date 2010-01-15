@@ -128,16 +128,27 @@ sub new {
 }
 
 sub _get_cmd {
-    my $self = shift;
+    my ($self, $test_file) = @_;
     my @switches;
     @switches = $self->lib if $self->lib;
     push @switches => $self->switches if $self->switches;
-    my %args;
-    $args{switches}    = \@switches;
-    $self->change_switches(\%args);
 
-    return [ $self->remote_config("ssh"), @{ $args{switches} }, @_ ];
+    my @other = grep { not /^-I/ } @switches;
+    my @inc = map {"-I$_"} grep {defined $_} map { s/^-I//; $self->rewrite_path($_) }
+        grep {/^-I/} @switches;
 
+    my $host = $self->remote_config("host")
+        ->[ $self->{hostno}++ % @{ $self->remote_config("host") } ];
+    my $userhost = $self->userhost($host);
+
+    return [ $self->remote_config("ssh"),
+        @{ $self->remote_config("ssh_args") }, $userhost,
+        "cd",                                  $self->rewrite_path( Cwd::cwd ),
+        "&&",                                  "PERL5LIB='@{[$self->{perl5lib}]}'",
+        @{$self->{env}},
+        $self->remote_config("perl"),          @other,
+        @inc,                                  $test_file,
+    ];
 }
 
 =head2 config_path
@@ -366,34 +377,6 @@ sub DESTROY {
     }
 }
 
-=head2 change_switches
-
-Changes the switches around, such that the remote perl is called, via
-ssh.  This code is called once per test file.
-
-=cut
-
-sub change_switches {
-    my ( $self, $args, $test ) = @_;
-
-    my $remote = $self->remote_config("root");
-
-    my @other = grep { not /^-I/ } @{ $args->{switches} };
-    my @inc = map {"-I$_"} grep {defined $_} map { s/^-I//; $self->rewrite_path($_) }
-        grep {/^-I/} @{ $args->{switches} };
-
-    my $host = $self->remote_config("host")
-        ->[ $self->{hostno}++ % @{ $self->remote_config("host") } ];
-    my $userhost = $self->userhost($host);
-    $args->{switches} = [
-        @{ $self->remote_config("ssh_args") }, $userhost,
-        "cd",                                  $self->rewrite_path( Cwd::cwd ),
-        "&&",                                  "PERL5LIB='@{[$self->{perl5lib}]}'",
-        @{$self->{env}},
-        $self->remote_config("perl"),          @other,
-        @inc
-    ];
-}
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
